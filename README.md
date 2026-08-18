@@ -1,184 +1,121 @@
-# 🚧 TollMind-RL
+# Toll Plaza Reinforcement Learning
 
-### Intelligent Toll Booth Management using Reinforcement Learning
-*MCA Mini Project*
+A reinforcement learning project where an agent learns to dispatch vehicles to
+lanes at a toll plaza to minimize waiting time. Includes a discrete-time
+queueing simulation, tabular Q-learning and SARSA agents, training with
+learning-curve plots, and a live animated simulation.
 
-TollMind-RL is a working, interactive simulation of an RL agent that
-decides how many toll booths to keep open at a toll plaza, based on
-real-time traffic conditions. It is built with tabular **Q-learning**
-implemented from scratch (no external RL library), a Streamlit dashboard,
-and a fully parameterized traffic simulation — every result on screen is
-computed live from the current settings.
+## Features
 
----
+- **Simulation** (`toll_plaza/toll_env.py`): tick-based queueing environment
+  - 4 vehicle types (car, motorcycle, truck, bus) with different service times and toll fees
+  - Fast **ETC lanes** that serve vehicles ~35% quicker than manual toll booths
+  - Poisson arrivals; each arriving vehicle is dispatched to one lane by the agent
+  - State: capped queue length per lane; Action: lane choice; Reward: `-total queue length`
+- **Agents** (`toll_plaza/agent.py`): tabular Q-learning and SARSA with
+  epsilon-greedy exploration and decaying epsilon
+- **Training** (`toll_plaza/train.py`): episode loop, CSV log, Q-table export,
+  learning-curve plots (reward + average wait)
+- **Visualization** (`toll_plaza/visualize.py`): live matplotlib animation of
+  vehicles queueing, being served at booths, and exiting
 
-## 1. Problem Statement
-
-Toll plazas experience fluctuating traffic. Opening too few booths causes
-long queues and congestion; opening too many wastes operating cost when
-traffic is light. This project trains an RL agent to dynamically decide
-how many booths to open, minute by minute, to balance throughput, waiting
-time, and operating cost.
-
-## 2. Objectives
-
-- Simulate a toll plaza with stochastic vehicle arrivals.
-- Model the problem as a Markov Decision Process (MDP).
-- Implement tabular Q-learning from first principles.
-- Provide an interactive dashboard to train, run, and inspect the agent.
-- Compare the learned policy against simple baselines (random, fixed-rule).
-
-## 3. MDP Formulation
-
-### State
-`(queue level, recent arrival level, previously active booths)`
-
-- **Queue level** — Low / Medium / High / Critical, derived from the
-  queue length relative to total plaza capacity (`max_booths ×
-  capacity_per_booth`):
-  - Low: queue ≤ 1× total capacity
-  - Medium: queue ≤ 2× total capacity
-  - High: queue ≤ 4× total capacity
-  - Critical: above that
-- **Arrival level** — Low / Medium / High, derived from last minute's
-  arrivals relative to total capacity.
-- **Previously active booths** — 1 .. max_booths.
-
-### Action
-Open `1, 2, 3, ... max_booths` booths this minute. The number of actions
-automatically adapts if the user changes "Maximum Booths" in the sidebar.
-
-### Reward
-```
-reward = throughput_weight * processed
-       - waiting_weight    * queue
-       - booth_cost_weight * active_booths
-       - congestion_penalty   (only if queue level is Critical)
-```
-All four weights are configurable from the UI, and the current formula is
-shown live in the sidebar.
-
-## 4. Q-Learning
-
-Update rule (implemented explicitly in `q_learning.py`, not hidden inside
-a library):
-
-```
-Q(s,a) <- Q(s,a) + α [ r + γ · max_a' Q(s',a') − Q(s,a) ]
-```
-
-- **α (alpha)** — learning rate
-- **γ (gamma)** — discount factor
-- **ε (epsilon)** — exploration rate, decayed every episode toward a
-  minimum value
-
-### Exploration vs Exploitation
-Epsilon-greedy action selection: with probability ε the agent picks a
-random action (explore); otherwise it picks `argmax Q(s, ·)` (exploit).
-
-## 5. Architecture
-
-```
-TollMind-RL/
-│
-├── app.py            # Streamlit dashboard (UI + orchestration)
-├── environment.py     # TollEnvironment: state/action/reward logic
-├── q_learning.py       # QLearningAgent: epsilon-greedy + Bellman update
-├── simulation.py        # Training loop, simulation runs, baselines, comparison
-├── config.py             # Default configuration values
-├── requirements.txt
-├── README.md
-└── results/               # Exported CSVs land here
-```
-
-Data flow:
-```
-Vehicles arrive (Poisson) -> Environment -> State -> Agent -> Action
--> Booths opened -> Vehicles processed -> Reward -> Q-table update
--> Next state -> ... (repeat)
-```
-
-## 6. Installation
+## Install
 
 ```bash
-python -m venv venv
-
-# Windows
-venv\Scripts\activate
-# macOS / Linux
-source venv/bin/activate
-
 pip install -r requirements.txt
 ```
 
-## 7. Running
+## Usage
+
+Train a Q-learning agent for 300 episodes:
 
 ```bash
-streamlit run app.py
+python -m toll_plaza.train --episodes 300 --lanes 4 --etc 1 --arrival-rate 0.3
 ```
 
-Then in the browser:
-1. Adjust settings in the sidebar (simulation, RL, reward weights).
-2. Click **🚀 Train** to train the Q-learning agent from scratch.
-3. Click **▶ Run Sim** to run one full greedy (exploitation-only) episode.
-4. Explore the tabs: Dashboard, Step-by-Step, Q-Table & Policy, Graphs,
-   Comparison, Real World, Viva Mode, Export.
+Train SARSA instead:
 
-If any sidebar value is changed after training, a warning banner appears
-prompting you to retrain — old results are never silently reused.
+```bash
+python -m toll_plaza.train --agent sarsa --episodes 300
+```
 
-## 8. Experiments
+Outputs land in `out/`:
 
-The **Comparison** tab runs three policies under identical simulation
-settings and reports average queue, waiting, throughput, total reward,
-and booth utilization:
+- `out/models/q_table_<agent>_<lanes>lanes.npy` – trained policy
+- `out/training_<agent>.csv` – per-episode metrics
+- `out/plots/learning_curve.png` – reward and wait-time learning curves
 
-- **Random Policy** — opens a random number of booths each minute.
-- **Fixed Policy** — a traditional rule-based controller
-  (`if queue > threshold: open N booths`), the classic non-learning
-  baseline.
-- **Q-Learning** — the trained agent, acting greedily.
+Watch the trained policy live (Q-learning usually outperforms a random policy
+after ~100 episodes):
 
-All values are computed live; no numbers are pre-written.
+```bash
+python -m toll_plaza.visualize --q-table out/models/q_table_qlearning_4lanes.npy --arrival-rate 0.3
+```
 
-## 9. Real-World Application
+To save a GIF animation instead of opening a window (needs Pillow):
 
-| Real World | This Project |
-|---|---|
-| Vehicle sensors | Simulated Poisson arrivals |
-| FASTag reader | Payment / service time |
-| Camera / loop detector | Queue measurement |
-| Toll booth status | Environment state |
-| RL controller | Decision-making agent |
-| Open/close booth | RL action |
-| Waiting time | Reward penalty |
-| Vehicles processed | Positive reward |
-| Traffic congestion | Environment feedback |
+```bash
+python -m toll_plaza.visualize --q-table out/models/q_table_qlearning_4lanes.npy --frames 200 --save out/simulation.gif
+```
 
-A production system could ingest data from FASTag systems, RFID readers,
-CCTV/computer vision, inductive loop sensors, toll transaction systems,
-and IoT traffic sensors, and use the RL controller to recommend (or, with
-safety constraints, automatically control) lane/booth allocation.
+## How it works
 
-**This project is a simulation only. It is not connected to real toll
-infrastructure.**
+**MDP formulation**
 
-## 10. Advantages
+- **State**: quantized queue length per lane, capped at 7 (one-hot mixed-radix index)
+- **Action**: which lane the next arriving vehicle is assigned to (0..N-1)
+- **Reward**: `-Σ queue lengths` each tick, so the agent minimizes total waiting
+- **Transition**: booth service times follow per-type uniform distributions,
+  scaled down in ETC lanes
 
-- Adapts to changing traffic instead of relying on fixed thresholds.
-- Learns a policy purely from experience (no need to manually tune rules).
-- Every parameter is transparent and explainable in a viva.
+**Learning**: classic tabular Q-learning update
+`Q(s,a) ← Q(s,a) + α(r + γ·max Q(s',a') − Q(s,a))` with ε-greedy exploration
+and per-step ε decay. With 4 lanes the table has 8⁴·4 = 16,384 entries — fully
+trainable in seconds on a laptop.
 
-## 11. Limitations
+**What the agent learns**: avoid piling every vehicle into one lane; exploit
+ETC lanes for trucks/buses only when queues there are short; keep lane queues
+balanced, mirroring real "dynamic lane assignment" systems.
 
-- Arrival data is simulated, not from real sensors.
-- State space is discretized/simplified for tabular Q-learning.
-- No safety layer for real-world automatic control.
-- Assumes vehicles are processed independently per booth with no lane
-  -changing or routing behaviour.
+## Browser version
 
-## 12. Future Scope
+Open the simulation in your web browser (Q-learning runs live in JavaScript, with the Python-trained policy embedded):
 
-DQN, SARSA, Monte Carlo methods, REINFORCE (policy gradient), multi-agent
-RL, real FASTag data, computer vision for queue detection, IoT sensors,
-real-time traffic prediction, cloud deployment, adaptive lane routing.
+```bash
+python -m toll_plaza.make_web       # builds toll_plaza_sim.html and opens your browser
+```
+
+Controls on the page:
+
+- **Start / Stop** — pause and resume the live simulation
+- **Slow-Mo** — 5x slower simulation so you can watch vehicles decelerate into the booths
+- **Live Q-learning** — keeps training in the browser (Q-values carry over from the embedded Python policy)
+- **Trained policy** — greedy execution of the embedded 300-episode policy
+- **Results** — show the last episode's results panel
+- **Reset** — restart episode and learning curve
+- **Arrival rate / Speed** sliders — demand and simulation speed
+
+Vehicles glide into queues, decelerate as they approach, pass through toll booths
+(animated red/amber gates raise, signal lights turn green while serving) and drive
+off the exit. At the end of every episode a **results panel** pops up with served /
+avg wait / max wait / revenue, a verdict, and a comparison against a random-dispatch
+baseline (computed at load) — e.g. "25s &rarr; 12s, 52% less waiting".
+
+## Key parameters
+
+| Flag | Default | Meaning |
+| ---- | ------- | ------- |
+| `--arrival-rate` | 0.3 | vehicles per second (Poisson); keep below plaza capacity (~0.4/s for 4 lanes, ~0.36/s all-manual) or queues grow forever |
+| `--lanes` / `--etc` | 4 / 1 | total lanes, how many are ETC |
+| `--episodes` | 300 | training episodes |
+| `--episode-len` | 1500 | simulation ticks per episode |
+| `--alpha` / `--gamma` / `--decay` | 0.1 / 0.95 / 0.999 | learning rate, discount, ε decay |
+| `--agent` | qlearning | `qlearning` or `sarsa` |
+
+## Ideas to extend
+
+- Deep Q-Network with state features (mean queue, vehicle type, arrival rate)
+- Multi-agent: one controller per booth, or pricing lane decisions
+- Include toll revenue in the reward to study revenue-vs-delay trade-offs
+- Dynamic booth staffing: agent also opens/closes booths
+- Continuous arrival rates and non-stationary demand (rush hour)

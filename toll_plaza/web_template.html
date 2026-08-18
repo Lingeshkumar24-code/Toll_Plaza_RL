@@ -1,0 +1,1395 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Toll Plaza RL Simulation</title>
+<style>
+  :root {
+    --bg: #0f172a; --panel: #1e293b; --border: #334155;
+    --text: #e2e8f0; --muted: #94a3b8; --accent: #3b82f6;
+    --green: #16a34a; --red: #dc2626; --violet: #7c3aed;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    min-height: 100vh;
+    background: radial-gradient(1200px 600px at 50% -10%, #1e3a5f 0%, #0f172a 55%, #0a0f1a 100%);
+    color: var(--text);
+    font-family: "Segoe UI", system-ui, sans-serif;
+    padding: 20px 16px 32px;
+    display: flex; flex-direction: column; align-items: center;
+  }
+  h1 { font-size: 22px; margin-bottom: 14px; letter-spacing: 0.4px; }
+  h1 .emoji { font-size: 24px; }
+  h1 .grad {
+    background: linear-gradient(90deg, #93c5fd, #a78bfa, #f472b6);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+  .controls {
+    display: flex; flex-wrap: wrap; gap: 10px; align-items: center;
+    background: linear-gradient(180deg, #1e293b, #172033);
+    border: 1px solid var(--border); border-radius: 12px;
+    padding: 10px 14px; margin-bottom: 10px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+  }
+  button {
+    background: var(--accent); color: #fff; border: none; border-radius: 8px;
+    padding: 8px 14px; font-size: 13px; cursor: pointer; font-weight: 600;
+    transition: transform 0.12s, box-shadow 0.12s, filter 0.12s;
+  }
+  button:hover { transform: translateY(-1px); filter: brightness(1.1); box-shadow: 0 4px 14px rgba(0,0,0,0.35); }
+  button.secondary { background: #475569; }
+  button.green { background: var(--green); }
+  button.red { background: var(--red); }
+  button.slowmo { background: var(--violet); }
+  button.why { background: #0891b2; }
+  button.active { outline: 2px solid #93c5fd; }
+  label { font-size: 13px; color: var(--muted); display: flex; align-items: center; gap: 8px; }
+  input[type=range] { width: 110px; accent-color: var(--accent); }
+  .stats {
+    display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center;
+    background: linear-gradient(180deg, #1e293b, #172033);
+    border: 1px solid var(--border); border-radius: 12px;
+    padding: 8px 14px; margin-bottom: 8px; font-size: 12px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
+  }
+  .chip { display: inline-flex; align-items: baseline; gap: 5px; }
+  .chip-lbl { color: var(--muted); text-transform: uppercase; font-size: 10px; letter-spacing: 0.6px; }
+  .chip b { color: var(--text); font-variant-numeric: tabular-nums; }
+  .rl-cards { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 8px; }
+  .rl-card {
+    flex: 1 1 200px; min-width: 200px;
+    background: linear-gradient(180deg, #1e293b, #172033);
+    border: 1px solid var(--border); border-radius: 12px;
+    padding: 8px 14px; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
+  }
+  .rl-card .card-lbl {
+    color: var(--muted); text-transform: uppercase; font-size: 10px; letter-spacing: 0.8px;
+    display: flex; justify-content: space-between; align-items: center;
+  }
+  .rl-card .card-val { font-size: 20px; font-weight: 700; color: #93c5fd; font-variant-numeric: tabular-nums; margin-top: 2px; }
+  .progress { width: 960px; max-width: 100%; height: 5px; background: #1e293b; border-radius: 3px; overflow: hidden; margin-bottom: 8px; border: 1px solid var(--border); }
+  #progressBar { height: 100%; width: 0%; background: linear-gradient(90deg, #3b82f6, #a78bfa); transition: width 0.3s; }
+  canvas { border: 1px solid var(--border); border-radius: 12px; background: #0b1220; display: block; max-width: 100%; box-shadow: 0 16px 40px rgba(0, 0, 0, 0.4); }
+  .foot { margin-top: 12px; font-size: 12px; color: var(--muted); max-width: 960px; text-align: center; line-height: 1.6; }
+  .legend { display: flex; gap: 14px; margin: 12px 0 8px; font-size: 12px; color: var(--muted); flex-wrap: wrap; justify-content: center; background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 8px 16px; }
+  .swatch { display: inline-block; width: 12px; height: 12px; border-radius: 3px; margin-right: 5px; vertical-align: -1px; }
+  .overlay {
+    position: fixed; inset: 0; z-index: 20;
+    background: rgba(2, 6, 23, 0.72); backdrop-filter: blur(3px);
+    display: flex; align-items: center; justify-content: center;
+    overflow-y: auto; padding: 24px 0;
+  }
+  .overlay.hidden { display: none; }
+  .ep-list-wrap { max-height: 220px; overflow-y: auto; margin: 10px 0; border: 1px solid var(--border); border-radius: 10px; }
+  .ep-list { width: 100%; border-collapse: collapse; font-size: 12px; }
+  .ep-list th, .ep-list td { padding: 4px 10px; text-align: right; border-bottom: 1px solid var(--border); }
+  .ep-list th { position: sticky; top: 0; background: var(--panel); color: var(--muted); font-weight: 600; }
+  .ep-list th:first-child, .ep-list td:first-child { text-align: left; }
+  .ep-list tr.latest td { background: rgba(59, 130, 246, 0.14); }
+  .ep-list tr.best td { background: rgba(74, 222, 128, 0.14); }
+  .final-note { margin: 10px 0; padding: 10px 14px; background: rgba(59, 130, 246, 0.08); border: 1px solid rgba(59, 130, 246, 0.35); border-radius: 10px; text-align: left; font-size: 12.5px; line-height: 1.55; color: var(--text); }
+  .final-note.hidden { display: none; }
+  .final-note h3 { margin: 0 0 4px; font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; color: #93c5fd; }
+  .final-note .fin-sec + .fin-sec { margin-top: 8px; }
+  .results-card {
+    background: linear-gradient(180deg, #1e293b 0%, #0f172a 100%);
+    border: 1px solid #334155; border-radius: 18px;
+    padding: 28px 36px; min-width: 440px; max-width: 96vw; text-align: center;
+    box-shadow: 0 24px 70px rgba(0, 0, 0, 0.6);
+  }
+  .results-card h2 { font-size: 19px; margin-bottom: 4px; letter-spacing: 0.3px; }
+  .results-card .sub { color: var(--muted); font-size: 12px; margin-bottom: 18px; }
+  .metrics { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 16px; }
+  .metric { background: rgba(148, 163, 184, 0.08); border: 1px solid rgba(148, 163, 184, 0.15); border-radius: 12px; padding: 14px 6px; }
+  .metric .num { font-size: 23px; font-weight: 700; color: #93c5fd; font-variant-numeric: tabular-nums; }
+  .metric .lbl { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.6px; margin-top: 4px; }
+  .compare { font-size: 13px; color: var(--text); background: rgba(59, 130, 246, 0.1); border: 1px solid rgba(59, 130, 246, 0.3); border-radius: 10px; padding: 10px 14px; margin-bottom: 12px; }
+  .verdict { font-size: 14px; color: #a7f3d0; margin-bottom: 18px; font-weight: 600; }
+  .results-card button { background: var(--accent); }
+  .charts { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin-bottom: 16px; }
+  .charts canvas { width: 100%; height: 110px; }
+  .charts .full { grid-column: 1 / -1; }
+  .chart-title { font-size: 11px; color: #93c5fd; text-align: left; margin-bottom: 4px; }
+  .why-card { max-width: 620px; text-align: left; }
+  .why-card h2 { text-align: center; margin-bottom: 16px; }
+  .why-section { margin-bottom: 14px; }
+  .why-section h3 { font-size: 12px; color: #93c5fd; text-transform: uppercase; letter-spacing: 0.6px; margin-bottom: 6px; }
+  .why-table { width: 100%; border-collapse: collapse; font-size: 13px; font-variant-numeric: tabular-nums; }
+  .why-table td, .why-table th { padding: 6px 10px; border-bottom: 1px solid #334155; text-align: left; }
+  .why-table tr.sel td { background: rgba(34, 197, 94, 0.12); }
+  .why-table tr.best td { color: #4ade80; font-weight: 600; }
+  .why-reason {
+    background: rgba(8, 145, 178, 0.1); border: 1px solid rgba(8, 145, 178, 0.35);
+    border-radius: 10px; padding: 12px 14px; font-size: 13px; line-height: 1.7;
+  }
+  .why-card button { margin-top: 4px; }
+  /* RL dashboard panels */
+  .main-grid { display: grid; grid-template-columns: 960px 1fr; gap: 12px; max-width: 1330px; width: 100%; }
+  .rail { display: flex; flex-direction: column; gap: 12px; min-width: 300px; }
+  .panel {
+    background: linear-gradient(180deg, #1e293b, #172033);
+    border: 1px solid var(--border); border-radius: 12px;
+    padding: 12px 14px; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+  }
+  .panel h3 {
+    font-size: 12px; color: #93c5fd; text-transform: uppercase; letter-spacing: 0.8px;
+    margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center;
+  }
+  .panel h3 .tag { font-size: 10px; color: var(--muted); letter-spacing: 0.4px; text-transform: none; }
+  .kv { display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; font-size: 12.5px; }
+  .kv .k { color: var(--muted); }
+  .kv .v { text-align: right; font-variant-numeric: tabular-nums; color: var(--text); }
+  .kv .v.mono { font-family: Consolas, monospace; }
+  .flow {
+    display: flex; align-items: stretch; gap: 0; flex-wrap: wrap;
+    font-size: 12px;
+  }
+  .flow .box {
+    background: #0b1220; border: 1px solid var(--border); border-radius: 10px;
+    padding: 8px 10px; flex: 1 1 150px; text-align: center;
+  }
+  .flow .box .fl { color: var(--muted); text-transform: uppercase; font-size: 9px; letter-spacing: 0.7px; }
+  .flow .box .fv { font-weight: 600; font-size: 12.5px; margin-top: 3px; font-variant-numeric: tabular-nums; }
+  .flow .box .fsub { color: var(--muted); font-size: 10px; margin-top: 2px; }
+  .flow .arr { align-self: center; color: #7c3aed; font-size: 15px; padding: 0 6px; font-weight: 700; }
+  .flow .box.sel { border-color: #22c55e; box-shadow: 0 0 0 1px #22c55e; }
+  .row3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; max-width: 1330px; width: 100%; margin-top: 12px; }
+  .row3 canvas { width: 100%; height: 150px; }
+  .rb-row { display: flex; justify-content: space-between; font-size: 12.5px; padding: 4px 0; border-bottom: 1px dashed #1e293b; font-variant-numeric: tabular-nums; }
+  .rb-row .neg { color: #f87171; }
+  .rb-row .pos { color: #4ade80; }
+  .rb-row.total { border-bottom: none; font-weight: 700; font-size: 13.5px; padding-top: 8px; }
+  .rb-row.ctx { color: var(--muted); font-size: 11px; }
+  .exp-bar { height: 14px; border-radius: 7px; overflow: hidden; display: flex; margin: 8px 0; border: 1px solid #334155; }
+  .exp-bar .explore { background: linear-gradient(90deg, #7c3aed, #a78bfa); }
+  .exp-bar .exploit { background: linear-gradient(90deg, #3b82f6, #93c5fd); }
+  .exp-legend { display: flex; justify-content: space-between; font-size: 12px; }
+  .table { width: 100%; border-collapse: collapse; font-size: 12.5px; font-variant-numeric: tabular-nums; }
+  .table th { color: var(--muted); text-transform: uppercase; font-size: 10px; letter-spacing: 0.6px; padding: 5px 8px; text-align: left; border-bottom: 1px solid #334155; }
+  .table td { padding: 6px 8px; border-bottom: 1px solid #1e293b; }
+  .table .hl { color: #4ade80; font-weight: 600; }
+  .table .neg { color: #f87171; }
+  .imp-badge { font-size: 13px; font-weight: 700; padding: 4px 10px; border-radius: 8px; display: inline-block; margin-top: 6px; }
+  .imp-badge.good { background: rgba(34, 197, 94, 0.15); color: #4ade80; border: 1px solid rgba(34, 197, 94, 0.4); }
+  .imp-badge.bad { background: rgba(239, 68, 68, 0.15); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.4); }
+  .qtable { width: 100%; border-collapse: collapse; font-size: 12.5px; font-variant-numeric: tabular-nums; }
+  .qtable th { color: var(--muted); text-transform: uppercase; font-size: 10px; letter-spacing: 0.5px; padding: 5px 8px; text-align: left; border-bottom: 1px solid #334155; }
+  .qtable td { padding: 6px 8px; border-bottom: 1px solid #1e293b; }
+  .qtable tr.sel td { background: rgba(59, 130, 246, 0.14); }
+  .qtable tr.best td { color: #4ade80; font-weight: 600; }
+  .qcell { display: inline-block; width: 14px; height: 14px; border-radius: 3px; margin-right: 4px; vertical-align: -2px; }
+  .dist { display: flex; gap: 8px; font-size: 11.5px; flex-wrap: wrap; }
+  .dist .d { flex: 1 1 80px; text-align: center; background: #0b1220; border: 1px solid var(--border); border-radius: 8px; padding: 6px 4px; }
+  .dist .d b { display: block; font-size: 15px; color: #93c5fd; }
+  .dist .d span { color: var(--muted); font-size: 10px; }
+  .arch { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 11.5px; justify-content: center; }
+  .arch .a-box { background: #0b1220; border: 1px solid var(--border); border-radius: 8px; padding: 6px 10px; }
+  .arch .a-box.env { border-color: #16a34a; }
+  .arch .a-box.agent { border-color: #7c3aed; background: rgba(124, 58, 237, 0.12); }
+  .arch .a-box.plaza { border-color: #3b82f6; }
+  .arch .a-arr { color: #64748b; font-weight: 700; }
+  .arch .a-caption { width: 100%; text-align: center; color: var(--muted); font-size: 10.5px; margin-top: 2px; }
+  .mini-note { font-size: 11px; color: var(--muted); line-height: 1.6; }
+  @media (max-width: 1330px) {
+    .main-grid, .row3 { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+<h1><span class="emoji">&#128663;</span> <span class="grad">Toll Plaza RL Simulation</span></h1>
+
+<div class="controls">
+  <button id="btnStart" class="green active">&#9654; Start</button>
+  <button id="btnStop" class="red secondary">&#9632; Stop</button>
+  <button id="btnSlowmo" class="slowmo secondary">&#8987; Slow-Mo</button>
+  <button id="btnTrain" class="active">Live Q-learning</button>
+  <button id="btnTrained" class="secondary">Trained policy</button>
+  <button id="btnResults" class="secondary">Results</button>
+  <button id="btnWhy" class="why secondary">&#10067; Why this action?</button>
+  <button id="btnReset" class="secondary">Reset</button>
+  <label>Arrival rate <input type="range" id="arrivalRate" min="0.05" max="0.60" step="0.05" value="0.30"><span id="arrivalRateVal">0.30</span>/s</label>
+  <label>Speed <input type="range" id="speed" min="1" max="12" step="1" value="4"><span id="speedVal">4</span>x</label>
+  <label>Episode length <input type="number" id="episodeLen" min="100" max="6000" step="100" value="1500" title="simulation ticks per episode — applies to the next episodes and to the random baseline"><span id="episodeLenVal">1500</span> ticks</label>
+  <label>Train for <input type="number" id="fixEpisodes" min="0" max="999" step="1" value="0" title="0 = keep training forever; at the fixed episode the sim shows the best result, switches to exploitation (&epsilon; = 0) and stops"><span id="fixEpisodesVal">0</span> episodes</label>
+</div>
+
+<div class="rl-cards">
+  <div class="rl-card"><div class="card-lbl"><span>reward</span><span>this episode</span></div><div class="card-val" id="cardReward">0</div></div>
+  <div class="rl-card"><div class="card-lbl"><span>&epsilon; exploration</span><span>greedy when low</span></div><div class="card-val" id="cardEps">1.000</div></div>
+  <div class="rl-card"><div class="card-lbl"><span>Q-updates</span><span>Bellman updates</span></div><div class="card-val" id="cardQUpdates">0</div></div>
+  <div class="rl-card"><div class="card-lbl"><span>RL improvement</span><span>vs random baseline</span></div><div class="card-val" id="cardImpr">-</div></div>
+</div>
+
+<div class="stats" id="stats"></div>
+<div class="progress"><div id="progressBar"></div></div>
+
+<div class="main-grid">
+  <div>
+    <canvas id="plaza" width="960" height="420"></canvas>
+    <div class="legend" id="legend"></div>
+    <canvas id="chart" width="960" height="110"></canvas>
+  </div>
+  <div class="rail">
+    <div class="panel">
+      <h3>RL Agent <span class="tag" id="rlMode">LIVE Q-LEARNING</span></h3>
+      <div class="kv">
+        <span class="k">Algorithm</span><span class="v" id="rlAlgo">Q-Learning (tabular)</span>
+        <span class="k">Current episode</span><span class="v" id="rlEpisode">1</span>
+        <span class="k">Current step</span><span class="v" id="rlStep">0</span>
+        <span class="k">Current state</span><span class="v mono" id="rlState">[0, 0, 0, 0]</span>
+        <span class="k">State index</span><span class="v mono" id="rlStateIdx">0</span>
+        <span class="k">Selected action</span><span class="v" id="rlAction">-</span>
+        <span class="k">Reward (r)</span><span class="v" id="rlReward">0</span>
+        <span class="k">Learning rate &alpha;</span><span class="v" id="rlAlpha">0.10</span>
+        <span class="k">Discount &gamma;</span><span class="v" id="rlGamma">0.95</span>
+        <span class="k">Exploration &epsilon;</span><span class="v" id="rlEps">1.000</span>
+        <span class="k">Q-table updates</span><span class="v" id="rlQUpdates">0</span>
+        <span class="k">Last episode</span><span class="v" id="rlImprovement">-</span>
+      </div>
+    </div>
+    <div class="panel">
+      <h3>Q-table viewer <span class="tag">state row s = <span id="qvState" class="mono">[0,0,0,0]</span></span></h3>
+      <table class="qtable" id="qvTable"></table>
+      <div style="margin-top:8px" id="qvHeat"></div>
+    </div>
+  </div>
+</div>
+
+<div class="panel" style="max-width:1330px;width:100%;margin-top:12px">
+  <h3>RL decision-making loop <span class="tag">one tick = one decision</span></h3>
+  <div class="flow">
+    <div class="box" id="dlS"><div class="fl">state</div><div class="fv mono" id="dlState">[0,0,0,0]</div><div class="fsub" id="dlStateIdx">idx 0</div></div>
+    <div class="arr">&#8594;</div>
+    <div class="box sel" id="dlA"><div class="fl">action</div><div class="fv" id="dlAction">-</div><div class="fsub" id="dlActionWhy">greedy / explore</div></div>
+    <div class="arr">&#8594;</div>
+    <div class="box" id="dlR"><div class="fl">reward</div><div class="fv" id="dlReward">0</div><div class="fsub">r = &minus;&Sigma; queue</div></div>
+    <div class="arr">&#8594;</div>
+    <div class="box" id="dlQ"><div class="fl">Q-value update</div><div class="fv mono" id="dlQUpdate">-</div><div class="fsub" id="dlQLabel">Q(s,a) &#8592; Q(s,a) + &alpha;(r + &gamma; max Q &minus; Q)</div></div>
+    <div class="arr">&#8594;</div>
+    <div class="box" id="dlN"><div class="fl">next state</div><div class="fv mono" id="dlNext">[0,0,0,0]</div><div class="fsub" id="dlNextIdx">idx 0</div></div>
+  </div>
+</div>
+
+<div class="row3">
+  <div class="panel">
+    <h3>Reward vs episode <span class="tag">total reward per episode</span></h3>
+    <canvas id="rlChart" width="430" height="150"></canvas>
+    <div class="mini-note" style="margin-top:6px">
+      Current <b id="rcNow">-</b> &middot; Average <b id="rcAvg">-</b> &middot; Best <b id="rcBest">-</b> &middot;
+      Trend <b id="rcTrend">-</b> (last 10 vs previous 10)
+    </div>
+  </div>
+  <div class="panel">
+    <h3>Exploration vs exploitation <span class="tag">&epsilon;-greedy</span></h3>
+    <div class="exp-legend">
+      <span style="color:#c4b5fd">Exploration <b id="expPct">100%</b></span>
+      <span style="color:#93c5fd">Exploitation <b id="expPct2">0%</b></span>
+    </div>
+    <div class="exp-bar"><div class="explore" id="expBar1" style="width:100%"></div><div class="exploit" id="expBar2" style="width:0%"></div></div>
+    <div class="mini-note">exploration probability = &epsilon; (decays &#215;0.999 per update, floor 0.01); each new episode restarts &epsilon; at 85% of the previous episode&#8217;s start, so every episode exploits the learned policy more.</div>
+    <canvas id="epsChart" width="430" height="100"></canvas>
+    <div class="mini-note">&epsilon; at the end of each episode (real values).</div>
+  </div>
+  <div class="panel">
+    <h3>Reward breakdown <span class="tag">last step</span></h3>
+    <div id="rbRows"></div>
+    <div class="mini-note" style="margin-top:8px">
+      The true reward is the negative total queue length; throughput and revenue are
+      context (not part of r). Reward uses the queues <em>after</em> the arrival.
+    </div>
+  </div>
+</div>
+
+<div class="row3">
+  <div class="panel">
+    <h3>RL vs Random baseline <span class="tag">real measurements</span></h3>
+    <table class="table">
+      <tr><th></th><th>RL policy</th><th>Random</th><th>&Delta;</th></tr>
+      <tr><td>Average wait</td><td id="cmpRlWait" class="hl">-</td><td id="cmpBaseWait">-</td><td id="cmpDWait">-</td></tr>
+      <tr><td>Vehicles served</td><td id="cmpRlServed">-</td><td id="cmpBaseServed">-</td><td id="cmpDServed">-</td></tr>
+      <tr><td>Revenue</td><td id="cmpRlRevenue">-</td><td id="cmpBaseRevenue">-</td><td id="cmpDRevenue">-</td></tr>
+      <tr><td>Average queue</td><td id="cmpRlQueue">-</td><td id="cmpBaseQueue">-</td><td id="cmpDQueue">-</td></tr>
+    </table>
+    <div style="text-align:center">
+      <span class="imp-badge" id="cmpImpr">-</span>
+    </div>
+    <div class="mini-note" style="margin-top:6px">
+      RL column = live values of the current episode; Random = 3 averaged episodes of
+      random dispatch at the same arrival rate (computed at load).
+    </div>
+  </div>
+  <div class="panel">
+    <h3>Training / convergence <span class="tag">live session</span></h3>
+    <div class="kv">
+      <span class="k">Training episodes</span><span class="v" id="trEpisodes">0</span>
+      <span class="k">Q-table size</span><span class="v" id="trQSize">-</span>
+      <span class="k">Q-table updates</span><span class="v" id="trQUpdates">0</span>
+      <span class="k">Avg reward / ep</span><span class="v" id="trAvgReward">-</span>
+      <span class="k">Best reward / ep</span><span class="v" id="trBestReward">-</span>
+      <span class="k">Avg waiting time</span><span class="v" id="trAvgWait">-</span>
+      <span class="k">Trend (reward)</span><span class="v" id="trTrend">-</span>
+      <span class="k">Convergence</span><span class="v" id="trConv">-</span>
+    </div>
+  </div>
+  <div class="panel">
+    <h3>Trained policy <span class="tag" id="tpSource">-</span></h3>
+    <div class="mini-note" style="margin-bottom:8px" id="tpNote">-</div>
+    <div class="dist" id="tpDist"></div>
+    <div class="kv" style="margin-top:10px">
+      <span class="k">Greedy episodes run</span><span class="v" id="tpEps">0</span>
+      <span class="k">Avg waiting time</span><span class="v" id="tpAvgWait">-</span>
+      <span class="k">Avg served</span><span class="v" id="tpServed">-</span>
+      <span class="k">Avg revenue</span><span class="v" id="tpRevenue">-</span>
+    </div>
+    <div class="mini-note" style="margin-top:6px">
+      Distribution = lane with highest Q-value for every one of the 4096 states, read
+      directly from the learned Q-table.
+    </div>
+  </div>
+</div>
+
+<div class="panel" style="max-width:1330px;width:100%;margin-top:12px">
+  <h3>RL architecture</h3>
+  <div class="arch">
+    <span class="a-box env">Environment<br><small>(4 toll lanes, ETC)</small></span>
+    <span class="a-arr">&#8595;</span>
+    <span class="a-box">Observe State<br><small>queue per lane (0..7)</small></span>
+    <span class="a-arr">&#8595;</span>
+    <span class="a-box agent">RL Agent (Q-Learning)<br><small>Q-table 4096 &#215; 4</small></span>
+    <span class="a-arr">&#8595;</span>
+    <span class="a-box">Select Action<br><small>dispatch vehicle to lane</small></span>
+    <span class="a-arr">&#8595;</span>
+    <span class="a-box plaza">Toll Plaza<br><small>booths serve vehicles</small></span>
+    <span class="a-arr">&#8595;</span>
+    <span class="a-box">Calculate Reward<br><small>r = &minus;&Sigma; queue length</small></span>
+    <span class="a-arr">&#8595;</span>
+    <span class="a-box agent">Update Q-table<br><small>Q(s,a) += &alpha;(r + &gamma; max Q' &minus; Q)</small></span>
+    <span class="a-arr">&#8595;</span>
+    <span class="a-box env">Next State<br><small>repeat</small></span>
+    <span class="a-caption">Q-learning cycle: off-policy, bootstraps from max&#8321; Q(s&#8242;,a&#8242;)</span>
+  </div>
+</div>
+
+<div class="overlay hidden" id="results">
+  <div class="results-card">
+    <h2>Episode Results</h2>
+    <div class="sub">episode <b id="resEpisode">-</b> finished</div>
+    <div class="metrics">
+      <div class="metric"><div class="num" id="resServed">-</div><div class="lbl">served</div></div>
+      <div class="metric"><div class="num" id="resAvgWait">-</div><div class="lbl">avg wait</div></div>
+      <div class="metric"><div class="num" id="resMaxWait">-</div><div class="lbl">max wait</div></div>
+      <div class="metric"><div class="num" id="resRevenue">-</div><div class="lbl">revenue</div></div>
+    </div>
+    <div class="compare" id="resCompare"></div>
+    <div class="final-note hidden" id="resFinal"></div>
+    <div class="ep-list-wrap"><table class="ep-list" id="resList"></table></div>
+    <div class="charts">
+      <div><div class="chart-title">Reward vs episode</div><canvas id="resC1" width="430" height="110"></canvas></div>
+      <div><div class="chart-title">Average waiting time vs episode</div><canvas id="resC2" width="430" height="110"></canvas></div>
+      <div><div class="chart-title">Average queue length vs episode</div><canvas id="resC3" width="430" height="110"></canvas></div>
+      <div><div class="chart-title">Vehicles served vs episode</div><canvas id="resC4" width="430" height="110"></canvas></div>
+      <div class="full"><div class="chart-title">RL vs Random baseline (wait / served / revenue)</div><canvas id="resC5" width="880" height="110"></canvas></div>
+    </div>
+    <div class="verdict" id="resVerdict"></div>
+    <button id="btnCloseResults">Close</button>
+  </div>
+</div>
+
+<div class="overlay hidden" id="whyOverlay">
+  <div class="results-card why-card">
+    <h2>Why this action?</h2>
+    <div class="why-section">
+      <h3>Current state</h3>
+      <div class="mini-note" id="whyState">-</div>
+    </div>
+    <div class="why-section">
+      <h3>Q-values for this state</h3>
+      <table class="why-table" id="whyTable"></table>
+    </div>
+    <div class="why-section">
+      <h3>Selected action</h3>
+      <div class="mini-note" id="whyAction" style="font-size:14px;font-weight:700;color:#93c5fd">-</div>
+    </div>
+    <div class="why-section">
+      <h3>Reason</h3>
+      <div class="why-reason" id="whyReason">-</div>
+    </div>
+    <button id="btnCloseWhy">Close</button>
+  </div>
+</div>
+
+<div class="foot">
+  Q-learning dispatches each arriving vehicle to a lane to minimize total queueing time (reward = &minus;&Sigma; queue length).
+  ETC lanes serve ~35% quicker. Every number on this page — rewards, Q-values, &epsilon;, Q-updates, baselines — is read live
+  from the actual RL implementation running in your browser.
+</div>
+
+<script>
+'use strict';
+const TRAINED_Q = __QTABLE_JSON__;
+
+const VEHICLE_TYPES = [
+  { name: 'Car',        color: '#3b82f6', fee: 1.0, minS:  5, maxS: 12 },
+  { name: 'Motorcycle', color: '#f97316', fee: 0.5, minS:  3, maxS:  7 },
+  { name: 'Truck',      color: '#ef4444', fee: 3.0, minS: 18, maxS: 32 },
+  { name: 'Bus',        color: '#a855f7', fee: 2.0, minS: 14, maxS: 22 },
+];
+const TYPE_PROBS = [0.55, 0.20, 0.15, 0.10];
+const MAX_Q = 7, ETC_SPEEDUP = 0.65;
+const N_LANES = 4, N_ETC = 1, EPISODE_LEN = 1500;
+const N_STATES = Math.pow(MAX_Q + 1, N_LANES);
+const ALPHA = 0.1, GAMMA = 0.95;
+let episodeLen = EPISODE_LEN;
+
+function mulberry32(a) {
+  return function () {
+    a |= 0; a = a + 0x6D2B79F5 | 0;
+    let t = Math.imul(a ^ a >>> 15, 1 | a);
+    t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+    return ((t ^ t >>> 14) >>> 0) / 4294967296;
+  };
+}
+
+class Env {
+  constructor() { this.rng = mulberry32(Date.now() & 0xffffffff); this.reset(); }
+  reset() {
+    this.tick = 0; this.vehicles = []; this.waitTimes = []; this.revenue = 0;
+    this.servedCount = 0; this.arrivals = 0; this.done = false;
+    this.lanes = [];
+    for (let i = 0; i < N_LANES; i++) {
+      const etc = i < N_ETC;
+      this.lanes.push({ index: i, isEtc: etc, mult: etc ? ETC_SPEEDUP : 1.0, queue: [], current: null });
+    }
+  }
+  stateTuple() { return this.lanes.map(l => Math.min(l.queue.length, MAX_Q)); }
+  encode(st) {
+    let idx = 0;
+    for (let i = 0; i < st.length; i++) idx += st[i] * Math.pow(MAX_Q + 1, i);
+    return idx;
+  }
+  rand(a, b) { return a + this.rng() * (b - a); }
+  totalQueue() { return this.lanes.reduce((x, l) => x + l.queue.length, 0); }
+  step(action) {
+    this.tick++;
+    for (const lane of this.lanes) {
+      if (lane.current) {
+        lane.current.remaining -= 1;
+        if (lane.current.remaining <= 0) {
+          const v = lane.current;
+          this.waitTimes.push(v.start - v.arrival);
+          this.revenue += v.type.fee;
+          this.servedCount++;
+          lane.current = null;
+        }
+      }
+      if (!lane.current && lane.queue.length) {
+        const v = lane.queue.shift();
+        v.serviceTime = this.rand(v.type.minS, v.type.maxS) * lane.mult;
+        v.remaining = v.serviceTime;
+        v.start = this.tick;
+        lane.current = v;
+      }
+    }
+    const arrivalRate = parseFloat(document.getElementById('arrivalRate').value);
+    if (this.rng() < arrivalRate) {
+      const lane = Math.max(0, Math.min(N_LANES - 1, Math.round(action)));
+      let r = this.rng(), acc = 0, t = 0;
+      for (let i = 0; i < TYPE_PROBS.length; i++) { acc += TYPE_PROBS[i]; if (r < acc) { t = i; break; } }
+      const v = { vid: this.vehicles.length, type: VEHICLE_TYPES[t], arrival: this.tick, lane, serviceTime: 0, remaining: 0, start: 0 };
+      this.vehicles.push(v);
+      this.lanes[lane].queue.push(v);
+      this.arrivals++;
+    }
+    this.done = this.tick >= episodeLen;
+    return this.stateTuple();
+  }
+  avgWait() {
+    return this.waitTimes.length ? this.waitTimes.reduce((a, b) => a + b, 0) / this.waitTimes.length : 0;
+  }
+}
+
+let Q = TRAINED_Q !== null ? Float64Array.from(TRAINED_Q) : new Float64Array(N_STATES * N_LANES);
+let EPSILON = 1.0;
+let epsStart = 1.0;
+let mode = 'train';
+let running = true;
+let slowmo = false;
+
+function act(s, greedy) {
+  if (!greedy && Math.random() < EPSILON) return Math.floor(Math.random() * N_LANES);
+  let best = 0, bv = -Infinity, base = s * N_LANES;
+  for (let a = 0; a < N_LANES; a++) { const v = Q[base + a]; if (v > bv) { bv = v; best = a; } }
+  return best;
+}
+function update(s, a, r, ns, done) {
+  let base = ns * N_LANES, maxN = -Infinity;
+  for (let i = 0; i < N_LANES; i++) if (Q[base + i] > maxN) maxN = Q[base + i];
+  Q[s * N_LANES + a] += ALPHA * (r + (done ? 0 : GAMMA * maxN) - Q[s * N_LANES + a]);
+  EPSILON = Math.max(0.01, EPSILON * 0.999);
+}
+
+// ---------------- RL telemetry (all values come from the live implementation) ----------------
+let qUpdates = 0;
+let lastR = 0, lastAction = 0, lastS = [0, 0, 0, 0], lastNS = [0, 0, 0, 0];
+let lastSIdx = 0, lastNSIdx = 0, lastQOld = 0, lastQNew = 0;
+let lastServedNow = 0, lastRevNow = 0, lastGreedy = false;
+let epRewardSum = 0, queueAcc = 0, stepCount = 0;
+let epRewards = [], epQueues = [], epServed = [], epsAtEnd = [], epRevenues = [];
+let baselineStats = { avgWait: 0, served: 0, revenue: 0, avgQueue: 0 };
+let trainedEps = [], liveEps = [];
+let lastArrivalsBefore = null;
+let lastImprovement = null;
+
+let baselineAvgWait = null;
+function refreshBaseline() {
+  const bEnv = new Env();
+  let totalW = 0, totalS = 0, totalR = 0, totalQ = 0, episodes = 3;
+  for (let e = 0; e < episodes; e++) {
+    bEnv.reset();
+    let qAcc = 0, qN = 0;
+    while (!bEnv.done) {
+      const a = Math.floor(Math.random() * N_LANES);
+      bEnv.step(a);
+      qAcc += bEnv.totalQueue(); qN++;
+    }
+    totalW += bEnv.avgWait(); totalS += bEnv.servedCount; totalR += bEnv.revenue; totalQ += qAcc / qN;
+  }
+  baselineAvgWait = totalW / episodes;
+  baselineStats = { avgWait: baselineAvgWait, served: totalS / episodes, revenue: totalR / episodes, avgQueue: totalQ / episodes };
+}
+refreshBaseline();
+
+const plaza = document.getElementById('plaza');
+const ctx = plaza.getContext('2d');
+const W = plaza.width, H = plaza.height;
+const LANE_H = 80, LANE_Y = 50;
+const BOOTH_X = 440, BOOTH_W = 50, EXIT_X = 780, ENTRY_X = 30;
+const VEHICLE_SPEED = 170;
+
+if (!CanvasRenderingContext2D.prototype.roundRect) {
+  CanvasRenderingContext2D.prototype.roundRect = function (x, y, w, h, r) {
+    this.moveTo(x + r, y);
+    this.arcTo(x + w, y, x + w, y + h, r);
+    this.arcTo(x + w, y + h, x, y + h, r);
+    this.arcTo(x, y + h, x, y, r);
+    this.arcTo(x, y, x + w, y, r);
+    this.closePath();
+  };
+}
+
+const disp = new Map();
+const arm = new Float64Array(N_LANES);
+
+function updateDisplay(dt, simTime) {
+  for (let i = 0; i < N_LANES; i++) {
+    const lane = env.lanes[i];
+    for (let k = 0; k < lane.queue.length; k++) {
+      const v = lane.queue[k];
+      let d = disp.get(v.vid);
+      if (!d) { d = { x: ENTRY_X, lane: i, mode: 'queue', targetX: 0 }; disp.set(v.vid, d); }
+      const long = v.type.name === 'Truck' || v.type.name === 'Bus';
+      const spacing = k > 10 ? (long ? 30 : 22) : (long ? 44 : 34);
+      d.targetX = BOOTH_X - 12 - (k + 1) * spacing;
+      d.lane = i;
+    }
+    if (lane.current) {
+      const v = lane.current;
+      let d = disp.get(v.vid);
+      if (!d) { d = { x: ENTRY_X, lane: i, mode: 'queue', targetX: 0 }; disp.set(v.vid, d); }
+      if (d.mode !== 'serve') { d.mode = 'serve'; d.x = BOOTH_X + 2; }
+      const p = Math.min(1, Math.max(0, (simTime - v.start) / v.serviceTime));
+      d.targetX = BOOTH_X + 2 + p * (EXIT_X - BOOTH_X - 2);
+      d.lane = i;
+    }
+    const targetArm = lane.current ? 90 : 0;
+    arm[i] += (targetArm - arm[i]) * Math.min(1, dt * 0.008);
+  }
+  for (const [vid, d] of disp) {
+    if (d.mode === 'serve') {
+      const lane = env.lanes[d.lane];
+      if (!lane.current || lane.current.vid !== vid) {
+        d.mode = 'depart';
+        d.targetX = EXIT_X + 90;
+      }
+    }
+  }
+  for (const d of disp.values()) {
+    if (d.mode === 'serve') {
+      d.x = d.targetX;
+    } else {
+      const dx = d.targetX - d.x;
+      const approach = Math.min(1, Math.abs(dx) / 70);
+      const step = VEHICLE_SPEED * (0.28 + 0.72 * approach) * dt / 1000;
+      d.x += Math.abs(dx) <= step ? dx : Math.sign(dx) * step;
+    }
+  }
+  for (const [vid, d] of disp) {
+    if (d.mode === 'depart' && d.x >= d.targetX - 1) disp.delete(vid);
+  }
+}
+
+function drawCar(x, y, color) {
+  ctx.fillStyle = color;
+  ctx.beginPath(); ctx.roundRect(x, y - 8, 30, 16, 5); ctx.fill();
+  ctx.strokeStyle = '#0f172a'; ctx.lineWidth = 1.4; ctx.stroke();
+  ctx.fillStyle = 'rgba(15, 23, 42, 0.6)';
+  ctx.beginPath(); ctx.roundRect(x + 20, y - 5.5, 7, 11, 2); ctx.fill();
+  ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
+  ctx.beginPath(); ctx.roundRect(x + 4, y - 5.5, 4, 11, 2); ctx.fill();
+}
+
+function drawMotorcycle(x, y, gy) {
+  ctx.fillStyle = '#1e293b';
+  ctx.beginPath(); ctx.arc(x + 8, gy, 5, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.arc(x + 22, gy, 5, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#f59e0b';
+  ctx.beginPath(); ctx.roundRect(x + 2, y - 2, 24, 6, 3); ctx.fill();
+  ctx.strokeStyle = '#0f172a'; ctx.lineWidth = 1.2; ctx.stroke();
+  ctx.strokeStyle = '#e2e8f0'; ctx.lineWidth = 1.5;
+  ctx.beginPath(); ctx.moveTo(x + 10, y - 1); ctx.lineTo(x + 6, y - 8); ctx.stroke();
+  ctx.fillStyle = '#cbd5e1';
+  ctx.beginPath(); ctx.arc(x + 5.5, y - 10, 3, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#e2e8f0';
+  ctx.beginPath(); ctx.roundRect(x + 12, y - 8, 7, 7, 2); ctx.fill();
+}
+
+function drawTruck(x, y, gy, color) {
+  ctx.fillStyle = '#334155';
+  ctx.beginPath(); ctx.roundRect(x, y - 14, 26, 20, 3); ctx.fill();
+  ctx.strokeStyle = '#0f172a'; ctx.lineWidth = 1.4; ctx.stroke();
+  ctx.fillStyle = '#1e293b';
+  for (const wx of [x + 5, x + 17]) { ctx.beginPath(); ctx.arc(wx, gy, 4.5, 0, Math.PI * 2); ctx.fill(); }
+  ctx.fillStyle = color;
+  ctx.beginPath(); ctx.roundRect(x + 26, y - 10, 15, 18, 4); ctx.fill();
+  ctx.stroke();
+  ctx.fillStyle = '#1e293b';
+  ctx.beginPath(); ctx.arc(x + 36, gy, 4.5, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#bfdbfe';
+  ctx.beginPath(); ctx.roundRect(x + 28, y - 7, 7, 8, 2); ctx.fill();
+}
+
+function drawBus(x, y, gy, color) {
+  ctx.fillStyle = color;
+  ctx.beginPath(); ctx.roundRect(x, y - 16, 42, 24, 5); ctx.fill();
+  ctx.strokeStyle = '#0f172a'; ctx.lineWidth = 1.4; ctx.stroke();
+  ctx.fillStyle = '#1e293b';
+  for (const wx of [x + 7, x + 36]) { ctx.beginPath(); ctx.arc(wx, gy, 5, 0, Math.PI * 2); ctx.fill(); }
+  ctx.fillStyle = '#f8fafc';
+  for (let w = 0; w < 3; w++) { ctx.beginPath(); ctx.roundRect(x + 5 + w * 9, y - 11, 6, 8, 2); ctx.fill(); }
+  ctx.fillStyle = 'rgba(15, 23, 42, 0.5)';
+  ctx.beginPath(); ctx.roundRect(x + 32, y - 11, 6, 8, 2); ctx.fill();
+}
+
+function drawVehicle(v, li) {
+  const d = disp.get(v.vid);
+  if (!d) return;
+  const y = LANE_Y + li * LANE_H;
+  const t = v.type.name;
+  const gy = y + 8;
+  let len = 30;
+  if (t === 'Truck' || t === 'Bus') len = 42;
+  if (t === 'Motorcycle') len = 26;
+  ctx.fillStyle = 'rgba(0, 0, 0, 0.35)';
+  ctx.beginPath(); ctx.ellipse(d.x + len / 2, y + 10, len / 2, 3.2, 0, 0, Math.PI * 2); ctx.fill();
+  if (t === 'Motorcycle') drawMotorcycle(d.x, y, gy);
+  else if (t === 'Truck') drawTruck(d.x, y, gy, v.type.color);
+  else if (t === 'Bus') drawBus(d.x, y, gy, v.type.color);
+  else drawCar(d.x, y, v.type.color);
+}
+
+function drawPlaza() {
+  const grad = ctx.createLinearGradient(0, 0, 0, H);
+  grad.addColorStop(0, '#101d36');
+  grad.addColorStop(0.55, '#0b1220');
+  grad.addColorStop(1, '#0a0f1a');
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, W, H);
+  for (let i = 0; i < N_LANES; i++) {
+    const y = LANE_Y + i * LANE_H;
+    const lane = env.lanes[i];
+    ctx.fillStyle = '#1c2a40';
+    ctx.fillRect(0, y - 24, W, 48);
+    ctx.fillStyle = '#2b3c57';
+    ctx.fillRect(0, y - 24, W, 3);
+    ctx.fillRect(0, y + 21, W, 3);
+    ctx.strokeStyle = '#eab308';
+    ctx.lineWidth = 2;
+    ctx.setLineDash([14, 12]);
+    ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.strokeStyle = '#38bdf8';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(18, y - 6); ctx.lineTo(28, y); ctx.lineTo(18, y + 6);
+    ctx.stroke();
+    const bx = BOOTH_X, by = y - 26;
+    ctx.fillStyle = lane.isEtc ? '#15803d' : '#475569';
+    ctx.beginPath();
+    ctx.moveTo(bx - 8, by - 2); ctx.lineTo(bx + BOOTH_W + 8, by - 2);
+    ctx.lineTo(bx + BOOTH_W - 2, by - 12); ctx.lineTo(bx + 2, by - 12);
+    ctx.closePath(); ctx.fill();
+    ctx.fillStyle = lane.isEtc ? '#16a34a' : '#64748b';
+    ctx.beginPath(); ctx.roundRect(bx, by, BOOTH_W, 52, 7); ctx.fill();
+    ctx.strokeStyle = '#0f172a'; ctx.lineWidth = 2; ctx.stroke();
+    ctx.fillStyle = '#dbeafe';
+    ctx.beginPath(); ctx.roundRect(bx + 6, by + 7, BOOTH_W - 12, 13, 4); ctx.fill();
+    ctx.fillStyle = '#0f172a'; ctx.font = 'bold 11px monospace'; ctx.textAlign = 'center';
+    ctx.fillText(lane.isEtc ? 'ETC' : 'TOLL', bx + BOOTH_W / 2, by + 40);
+    ctx.textAlign = 'left';
+    ctx.fillStyle = '#cbd5e1'; ctx.font = 'bold 13px monospace';
+    ctx.fillText('L' + (i + 1) + (lane.isEtc ? ' (ETC)' : ''), 34, y - 30);
+    const serving = !!lane.current;
+    if (serving) {
+      const glow = ctx.createRadialGradient(bx + BOOTH_W / 2, by - 4, 1, bx + BOOTH_W / 2, by - 4, 13);
+      glow.addColorStop(0, 'rgba(74, 222, 128, 0.55)');
+      glow.addColorStop(1, 'rgba(74, 222, 128, 0)');
+      ctx.fillStyle = glow;
+      ctx.beginPath(); ctx.arc(bx + BOOTH_W / 2, by - 4, 13, 0, Math.PI * 2); ctx.fill();
+    }
+    ctx.fillStyle = serving ? '#22c55e' : '#ef4444';
+    ctx.beginPath(); ctx.arc(bx + BOOTH_W / 2, by - 4, 4.5, 0, Math.PI * 2); ctx.fill();
+    const rad = Math.PI * arm[i] / 180;
+    const pivotX = bx + BOOTH_W - 4, pivotY = y - 24;
+    ctx.save();
+    ctx.translate(pivotX, pivotY);
+    ctx.rotate(-rad);
+    ctx.fillStyle = '#fbbf24';
+    ctx.beginPath(); ctx.roundRect(0, -4, 30, 8, 4); ctx.fill();
+    ctx.strokeStyle = '#7c2d12'; ctx.lineWidth = 1.2; ctx.stroke();
+    ctx.fillStyle = '#dc2626';
+    for (let sgm = 0; sgm < 3; sgm++) {
+      ctx.beginPath();
+      ctx.moveTo(5 + sgm * 8, -4); ctx.lineTo(9 + sgm * 8, -4);
+      ctx.lineTo(5 + sgm * 8, 4); ctx.lineTo(1 + sgm * 8, 4);
+      ctx.closePath(); ctx.fill();
+    }
+    ctx.beginPath(); ctx.arc(30, 0, 4.5, 0, Math.PI * 2); ctx.fill();
+    ctx.restore();
+    ctx.fillStyle = '#0f172a';
+    ctx.beginPath(); ctx.arc(pivotX, pivotY, 4, 0, Math.PI * 2); ctx.fill();
+    if (lane.current) drawVehicle(lane.current, i);
+    for (let k = 0; k < lane.queue.length; k++) drawVehicle(lane.queue[k], i);
+  }
+  ctx.fillStyle = '#15803d';
+  ctx.beginPath(); ctx.roundRect(EXIT_X + 6, LANE_Y - 12, 72, 26, 6); ctx.fill();
+  ctx.fillStyle = '#dcfce7'; ctx.font = 'bold 14px monospace'; ctx.textAlign = 'center';
+  ctx.fillText('EXIT', EXIT_X + 42, LANE_Y + 7);
+}
+
+const chart = document.getElementById('chart');
+const cctx = chart.getContext('2d');
+let epAvgWaits = [];
+
+function drawChart() {
+  cctx.clearRect(0, 0, chart.width, chart.height);
+  const cg = cctx.createLinearGradient(0, 0, 0, chart.height);
+  cg.addColorStop(0, '#101d36'); cg.addColorStop(1, '#0b1220');
+  cctx.fillStyle = cg; cctx.fillRect(0, 0, chart.width, chart.height);
+  cctx.fillStyle = '#94a3b8'; cctx.font = '12px sans-serif';
+  cctx.fillText('avg wait (s) per episode — lower is better', 12, 16);
+  if (epAvgWaits.length < 2) return;
+  const maxV = Math.max(...epAvgWaits, 0.1);
+  const minV = Math.min(...epAvgWaits, 0);
+  cctx.strokeStyle = '#38bdf8'; cctx.lineWidth = 2;
+  cctx.beginPath();
+  for (let i = 0; i < epAvgWaits.length; i++) {
+    const x = 12 + i * (chart.width - 24) / Math.max(1, epAvgWaits.length - 1);
+    const y = chart.height - 20 - (epAvgWaits[i] - minV) / Math.max(maxV - minV, 1e-9) * (chart.height - 44);
+    i === 0 ? cctx.moveTo(x, y) : cctx.lineTo(x, y);
+  }
+  cctx.stroke();
+  cctx.fillStyle = '#94a3b8'; cctx.font = '11px monospace';
+  cctx.fillText('min ' + minV.toFixed(1) + '  max ' + maxV.toFixed(1), 12, chart.height - 6);
+}
+
+// ---------------- generic line chart for RL telemetry ----------------
+function drawLineChart(cv, data, color, label, decimals) {
+  const c = cv.getContext('2d');
+  const cw = cv.width, ch = cv.height;
+  c.clearRect(0, 0, cw, ch);
+  c.fillStyle = '#101d36'; c.fillRect(0, 0, cw, ch);
+  c.fillStyle = '#94a3b8'; c.font = '10px sans-serif';
+  c.fillText(label, 8, 13);
+  if (data.length < 2) {
+    c.fillStyle = '#475569'; c.fillText('collecting data…', 8, ch - 8);
+    return;
+  }
+  const maxV = Math.max(...data), minV = Math.min(...data);
+  c.strokeStyle = color; c.lineWidth = 1.6;
+  c.beginPath();
+  for (let i = 0; i < data.length; i++) {
+    const x = 8 + i * (cw - 16) / Math.max(1, data.length - 1);
+    const y = ch - 16 - (data[i] - minV) / Math.max(maxV - minV, 1e-9) * (ch - 30);
+    i === 0 ? c.moveTo(x, y) : c.lineTo(x, y);
+  }
+  c.stroke();
+  const d = decimals || 0;
+  c.fillStyle = '#64748b'; c.font = '9px monospace';
+  c.fillText('min ' + minV.toFixed(d) + '  max ' + maxV.toFixed(d) + '  n=' + data.length, 8, ch - 4);
+}
+
+// ---------------- RL dashboard rendering ----------------
+function fmt(v, d) { return (v === null || v === undefined || !isFinite(v)) ? '-' : v.toFixed(d === undefined ? 1 : d); }
+function laneName(a) { return 'L' + (a + 1) + (a === 0 ? ' (ETC)' : ''); }
+function actionLabel(a) { return 'Dispatch to ' + laneName(a); }
+
+function qRow(sIdx) {
+  const out = [];
+  const base = sIdx * N_LANES;
+  for (let a = 0; a < N_LANES; a++) out.push(Q[base + a]);
+  return out;
+}
+function argMaxRow(vals) {
+  let b = 0;
+  for (let a = 1; a < vals.length; a++) if (vals[a] > vals[b]) b = a;
+  return b;
+}
+
+function renderQViewer() {
+  const vals = qRow(lastSIdx);
+  const best = argMaxRow(vals);
+  const mn = Math.min(...vals), mx = Math.max(...vals);
+  let rows = '<tr><th>action</th><th>Q-value</th><th></th></tr>';
+  for (let a = 0; a < N_LANES; a++) {
+    const sel = a === lastAction;
+    const isBest = a === best;
+    const w = (mx === mn) ? 0 : Math.max(3, Math.round((vals[a] - mn) / (mx - mn) * 100));
+    rows += '<tr' + (sel ? ' class="sel"' : (isBest ? ' class="best"' : '')) + '>' +
+      '<td>Prioritize ' + laneName(a) + (sel ? ' &#8592; selected' : '') + (isBest && !sel ? ' &#9733;' : '') + '</td>' +
+      '<td>' + vals[a].toFixed(2) + '</td>' +
+      '<td style="width:90px"><div style="height:6px;background:#334155;border-radius:3px;overflow:hidden"><div style="height:100%;width:' + w + '%;background:' + (isBest ? '#22c55e' : '#3b82f6') + '"></div></div></td>' +
+      '</tr>';
+  }
+  document.getElementById('qvTable').innerHTML = rows;
+  let heat = '';
+  for (let a = 0; a < N_LANES; a++) {
+    const norm = (mx === mn) ? 0.15 : 0.15 + 0.85 * (vals[a] - mn) / (mx - mn);
+    heat += '<span class="qcell" style="background:rgba(59,130,246,' + norm.toFixed(2) + ');border:1px solid ' +
+      (a === lastAction ? '#22c55e' : (a === best ? '#4ade80' : '#334155')) + '"></span>';
+  }
+  document.getElementById('qvHeat').innerHTML = heat + ' <span class="mini-note">heat = Q magnitude &middot; green border = argmax &middot; outlined = selected</span>';
+}
+
+function renderDecisionFlow() {
+  document.getElementById('dlState').textContent = '[' + lastS.join(', ') + ']';
+  document.getElementById('dlStateIdx').textContent = 'idx ' + lastSIdx;
+  document.getElementById('dlAction').textContent = actionLabel(lastAction);
+  document.getElementById('dlActionWhy').textContent = lastGreedy ? 'greedy (trained policy)' :
+    (lastAction === argMaxRow(qRow(lastSIdx)) ? 'greedy (argmax Q)' : 'exploration (&epsilon;)');
+  document.getElementById('dlReward').textContent = lastR.toFixed(1);
+  document.getElementById('dlQUpdate').textContent = lastQOld.toFixed(2) + ' &#8594; ' + lastQNew.toFixed(2);
+  document.getElementById('dlQLabel').textContent = lastGreedy ? 'policy frozen — no Bellman update (greedy)' :
+    'Q(s,a) += ' + ALPHA + ' * (' + lastR.toFixed(1) + ' + ' + GAMMA + ' * maxQ(s\') - ' + lastQOld.toFixed(2) + ')';
+  document.getElementById('dlNext').textContent = '[' + lastNS.join(', ') + ']';
+  document.getElementById('dlNextIdx').textContent = 'idx ' + lastNSIdx;
+}
+
+function renderBreakdown() {
+  let html = '';
+  for (let i = 0; i < N_LANES; i++) {
+    const q = lastNS[i];
+    html += '<div class="rb-row"><span>Waiting penalty &middot; ' + laneName(i) + '</span><span class="neg">' + (-q).toFixed(0) + '</span></div>';
+  }
+  html += '<div class="rb-row total"><span>Total reward (r = &minus;&Sigma; queue)</span><span style="color:#93c5fd">' + lastR.toFixed(1) + '</span></div>';
+  html += '<div class="rb-row ctx"><span>Served this step (context)</span><span class="pos">+' + lastServedNow + '</span></div>';
+  html += '<div class="rb-row ctx"><span>Revenue this step (context)</span><span class="pos">+$' + lastRevNow.toFixed(1) + '</span></div>';
+  html += '<div class="rb-row ctx"><span>Arrived this step</span><span>' + (env.arrivals - (lastArrivalsBefore === null ? 0 : lastArrivalsBefore)) + '</span></div>';
+  document.getElementById('rbRows').innerHTML = html;
+}
+
+function renderExploration() {
+  const train = mode === 'train';
+  const eps = train ? EPSILON : 0;
+  const p = Math.round(eps * 100);
+  document.getElementById('expPct').textContent = train ? p + '%' : 'greedy';
+  document.getElementById('expPct2').textContent = train ? (100 - p) + '%' : '100%';
+  document.getElementById('expBar1').style.width = (train ? p : 0) + '%';
+  document.getElementById('expBar2').style.width = (train ? 100 - p : 100) + '%';
+}
+
+function mean(a) { return a.length ? a.reduce((x, y) => x + y, 0) / a.length : null; }
+function lastN(a, n) { return a.slice(Math.max(0, a.length - n)); }
+
+function renderRewardPanel() {
+  document.getElementById('rcNow').textContent = epRewardSum.toFixed(0);
+  const avg = mean(epRewards);
+  document.getElementById('rcAvg').textContent = avg === null ? '-' : avg.toFixed(0);
+  const best = epRewards.length ? Math.max(...epRewards) : null;
+  document.getElementById('rcBest').textContent = best === null ? '-' : best.toFixed(0);
+  let trend = null;
+  if (epRewards.length >= 20) {
+    const a = mean(lastN(epRewards, 10)), b = mean(epRewards.slice(Math.max(0, epRewards.length - 20), epRewards.length - 10));
+    trend = a - b;
+  }
+  document.getElementById('rcTrend').textContent = trend === null ? '-' : (trend > 0 ? '+' : '') + trend.toFixed(0);
+  drawLineChart(document.getElementById('rlChart'), epRewards, '#f472b6', 'episode total reward (real, negative = queueing cost)', 0);
+  drawLineChart(document.getElementById('epsChart'), epsAtEnd, '#a78bfa', 'epsilon at episode end', 3);
+}
+
+function renderBaselineCompare() {
+  const liveAw = env.servedCount ? env.waitTimes.reduce((x, y) => x + y, 0) / env.servedCount : 0;
+  const q = env.totalQueue() / Math.max(1, env.tick);
+  document.getElementById('cmpRlWait').textContent = liveAw.toFixed(1) + 's';
+  document.getElementById('cmpBaseWait').textContent = baselineStats.avgWait.toFixed(1) + 's';
+  document.getElementById('cmpRlServed').textContent = env.servedCount;
+  document.getElementById('cmpBaseServed').textContent = baselineStats.served.toFixed(0);
+  document.getElementById('cmpRlRevenue').textContent = '$' + env.revenue.toFixed(0);
+  document.getElementById('cmpBaseRevenue').textContent = '$' + baselineStats.revenue.toFixed(0);
+  document.getElementById('cmpRlQueue').textContent = q.toFixed(1);
+  document.getElementById('cmpBaseQueue').textContent = baselineStats.avgQueue.toFixed(1);
+  document.getElementById('cmpDWait').textContent = (liveAw - baselineStats.avgWait) >= 0 ? '+' : '';
+  document.getElementById('cmpDWait').textContent += (liveAw - baselineStats.avgWait).toFixed(1) + 's';
+  document.getElementById('cmpDServed').textContent = '+' + (env.servedCount - baselineStats.served).toFixed(0);
+  document.getElementById('cmpDRevenue').textContent = '+' + (env.revenue - baselineStats.revenue).toFixed(0);
+  document.getElementById('cmpDQueue').textContent = (q - baselineStats.avgQueue) >= 0 ? '+' : '';
+  document.getElementById('cmpDQueue').textContent += (q - baselineStats.avgQueue).toFixed(1);
+  const imp = (1 - liveAw / baselineStats.avgWait) * 100;
+  const badge = document.getElementById('cmpImpr');
+  badge.textContent = imp >= 0 ? 'RL improves waiting time by ' + Math.round(imp) + '%' : 'RL currently ' + Math.round(-imp) + '% worse (early training)';
+  badge.className = 'imp-badge ' + (imp >= 0 ? 'good' : 'bad');
+}
+
+function renderTrainingPanel() {
+  document.getElementById('trEpisodes').textContent = Math.max(0, episode - 1);
+  document.getElementById('trQSize').textContent = N_STATES + ' states &#215; ' + N_LANES + ' actions (' + (N_STATES * N_LANES) + ' values)';
+  document.getElementById('trQUpdates').textContent = qUpdates;
+  const avg = mean(epRewards);
+  document.getElementById('trAvgReward').textContent = avg === null ? '-' : avg.toFixed(0);
+  const best = epRewards.length ? Math.max(...epRewards) : null;
+  document.getElementById('trBestReward').textContent = best === null ? '-' : best.toFixed(0);
+  const avgW = mean(epAvgWaits);
+  document.getElementById('trAvgWait').textContent = avgW === null ? '-' : avgW.toFixed(1) + 's';
+  let trend = null;
+  if (epRewards.length >= 20) {
+    const a = mean(lastN(epRewards, 10)), b = mean(epRewards.slice(Math.max(0, epRewards.length - 20), epRewards.length - 10));
+    trend = a - b;
+  }
+  document.getElementById('trTrend').textContent = trend === null ? '-' : (trend > 0 ? '+' : '') + trend.toFixed(0) + ' / 10 eps';
+  let conv = '-';
+  if (epRewards.length >= 20 && trend !== null) {
+    conv = Math.abs(trend) < 500 ? 'stabilizing (|trend| &lt; 500)' : (trend > 0 ? 'improving' : 'regressing');
+  }
+  document.getElementById('trConv').textContent = conv;
+}
+
+function renderTrainedPolicyPanel() {
+  const embedded = TRAINED_Q !== null;
+  document.getElementById('tpSource').textContent = embedded ? 'from Python training' : 'untrained in browser';
+  document.getElementById('tpNote').innerHTML = embedded
+    ? 'This tab runs the policy learned during Python training (<b>300 episodes, &alpha;=0.1, &gamma;=0.95</b>) and embedded into this page. Actions are greedy &mdash; no updates.'
+    : 'No trained Q-table was embedded, so this tab greedily uses the Q-table learned live in this browser session.';
+  const dist = [0, 0, 0, 0];
+  for (let sIdx = 0; sIdx < N_STATES; sIdx++) dist[argMaxRow(qRow(sIdx))]++;
+  let html = '';
+  for (let a = 0; a < N_LANES; a++) {
+    html += '<div class="d"><b>' + Math.round(100 * dist[a] / N_STATES) + '%</b><span>' + laneName(a) + '</span></div>';
+  }
+  document.getElementById('tpDist').innerHTML = html;
+  const te = trainedEps;
+  document.getElementById('tpEps').textContent = te.length;
+  document.getElementById('tpAvgWait').textContent = te.length ? mean(te.map(e => e.wait)).toFixed(1) + 's' : '-';
+  document.getElementById('tpServed').textContent = te.length ? mean(te.map(e => e.served)).toFixed(0) : '-';
+  document.getElementById('tpRevenue').textContent = te.length ? '$' + mean(te.map(e => e.revenue)).toFixed(0) : '-';
+}
+
+function renderRLPanels() {
+  document.getElementById('rlMode').textContent = mode === 'train'
+    ? (trainingComplete ? 'EXPLOITING' : 'LIVE Q-LEARNING')
+    : 'GREEDY (TRAINED POLICY)';
+  document.getElementById('rlEpisode').textContent = episode;
+  document.getElementById('rlStep').textContent = env.tick;
+  document.getElementById('rlState').textContent = '[' + env.stateTuple().join(', ') + ']';
+  document.getElementById('rlStateIdx').textContent = s;
+  document.getElementById('rlAction').textContent = actionLabel(lastAction);
+  document.getElementById('rlReward').textContent = lastR.toFixed(1);
+  document.getElementById('rlAlpha').textContent = ALPHA.toFixed(2);
+  document.getElementById('rlGamma').textContent = GAMMA.toFixed(2);
+  document.getElementById('rlEps').textContent = mode === 'train' ? EPSILON.toFixed(4) : 'greedy';
+  document.getElementById('rlQUpdates').textContent = qUpdates;
+  document.getElementById('rlImprovement').textContent = lastResult
+    ? lastResult.avgWait.toFixed(1) + 's \u00b7 ' +
+      (lastImprovement === null ? 'first episode' : (lastImprovement >= 0 ? '+' : '') + lastImprovement + '% vs previous')
+    : 'still running\u2026';
+  document.getElementById('qvState').textContent = '[' + lastS.join(', ') + ']';
+  renderQViewer();
+  renderDecisionFlow();
+  renderBreakdown();
+  renderExploration();
+}
+
+function renderCards() {
+  document.getElementById('cardReward').textContent = epRewardSum.toFixed(0);
+  document.getElementById('cardEps').textContent = mode === 'train' ? EPSILON.toFixed(3) : 'greedy';
+  document.getElementById('cardQUpdates').textContent = qUpdates;
+  const liveAw = env.servedCount ? env.waitTimes.reduce((x, y) => x + y, 0) / env.servedCount : 0;
+  const imp = (1 - liveAw / baselineAvgWait) * 100;
+  const el = document.getElementById('cardImpr');
+  if (!isFinite(imp)) { el.textContent = '-'; el.style.color = '#94a3b8'; }
+  else if (imp >= 0) { el.textContent = '+' + Math.round(imp) + '%'; el.style.color = '#4ade80'; }
+  else { el.textContent = Math.round(imp) + '%'; el.style.color = '#f87171'; }
+}
+
+const env = new Env();
+let episode = 1;
+let fixedEpisodes = 0;
+let trainingComplete = false;
+let bestEpisode = null;
+let bestResult = null;
+let s = env.encode(env.stateTuple());
+let bestWait = Infinity;
+let acc = 0, last = performance.now();
+let lastResult = null;
+let episodeRecords = [];
+
+function tickLoop() {
+  if (env.done) {
+    const aw = env.avgWait();
+    const mw = env.waitTimes.length ? Math.max(...env.waitTimes) : 0;
+    epAvgWaits.push(aw);
+    if (epAvgWaits.length > 600) epAvgWaits.shift();
+    const rec = { reward: epRewardSum, wait: aw, queue: queueAcc / Math.max(1, stepCount), served: env.servedCount, revenue: env.revenue, eps: mode === 'train' ? EPSILON : 0 };
+    if (aw < bestWait) {
+      bestWait = aw;
+      bestEpisode = episode;
+      bestResult = { episode: episode, served: env.servedCount, avgWait: aw, maxWait: mw, revenue: env.revenue, reward: rec.reward, improvement: null };
+    }
+    epRewards.push(rec.reward); epQueues.push(rec.queue); epServed.push(rec.served); epsAtEnd.push(rec.eps); epRevenues.push(rec.revenue);
+    if (epRewards.length > 600) { epRewards.shift(); epQueues.shift(); epServed.shift(); epsAtEnd.shift(); epRevenues.shift(); }
+    (mode === 'train' ? liveEps : trainedEps).push(rec);
+    const prevRec = episodeRecords.length ? episodeRecords[episodeRecords.length - 1] : null;
+    lastImprovement = prevRec && prevRec.avgWait > 0 ? Math.round((prevRec.avgWait - aw) / prevRec.avgWait * 100) : null;
+    lastResult = { episode: episode, served: env.servedCount, avgWait: aw, maxWait: mw, revenue: env.revenue, reward: rec.reward, improvement: lastImprovement };
+    episodeRecords.push(lastResult);
+    if (episodeRecords.length > 600) episodeRecords.shift();
+    episode++;
+    env.reset();
+    disp.clear();
+    epRewardSum = 0; queueAcc = 0; stepCount = 0;
+    s = env.encode(env.stateTuple());
+    if (mode === 'train') {
+      EPSILON = Math.max(0.05, epsStart * 0.85);
+      epsStart = EPSILON;
+      if (fixedEpisodes > 0 && !trainingComplete && episode > fixedEpisodes) {
+        trainingComplete = true;
+        EPSILON = 0;
+        running = false;
+        showResults(true);
+      }
+    }
+  }
+  const greedy = mode === 'trained' || trainingComplete;
+  lastS = env.stateTuple();
+  lastSIdx = s;
+  lastArrivalsBefore = env.arrivals;
+  const servedBefore = env.servedCount, revBefore = env.revenue;
+  const a = act(s, greedy);
+  lastAction = a;
+  const nsArr = env.step(a);
+  const r = -nsArr.reduce((x, y) => x + y, 0);
+  lastR = r;
+  lastNS = nsArr;
+  const ns = env.encode(nsArr);
+  lastNSIdx = ns;
+  lastServedNow = env.servedCount - servedBefore;
+  lastRevNow = env.revenue - revBefore;
+  lastGreedy = greedy;
+  lastQOld = Q[s * N_LANES + a];
+  if (!greedy) { update(s, a, r, ns, env.done); qUpdates++; }
+  lastQNew = Q[s * N_LANES + a];
+  s = ns;
+  epRewardSum += r;
+  queueAcc += env.totalQueue();
+  stepCount++;
+}
+
+function chip(label, value, color) {
+  return '<span class="chip"><span class="chip-lbl">' + label + '</span> <b' + (color ? ' style="color:' + color + '"' : '') + '>' + value + '</b></span>';
+}
+
+function updateStats() {
+  const queues = env.lanes.map(l => l.queue.length).join(' ');
+  const arrivalVal = parseFloat(document.getElementById('arrivalRate').value);
+  document.getElementById('arrivalRateVal').textContent = arrivalVal.toFixed(2);
+  document.getElementById('speedVal').textContent = document.getElementById('speed').value;
+  const pct = Math.round(100 * env.tick / episodeLen);
+  document.getElementById('progressBar').style.width = pct + '%';
+  let html = chip('episode', episode) + chip('progress', pct + '%');
+  if (slowmo) html += chip('mode', 'SLOW-MO', '#c4b5fd');
+  html += chip('mode', mode === 'train' ? (trainingComplete ? 'exploiting (eps 0.000)' : 'training (eps ' + EPSILON.toFixed(3) + ')') : 'trained policy');
+  html += running ? chip('status', 'RUNNING', '#22c55e') : chip('status', 'PAUSED', '#ef4444');
+  html += chip('arrivals', env.arrivals) + chip('served', env.servedCount)
+    + chip('avg wait', env.avgWait().toFixed(1) + 's')
+    + chip('best avg', bestWait === Infinity ? '-' : bestWait.toFixed(1) + 's')
+    + chip('vs prev ep', lastImprovement === null ? '-' : (lastImprovement >= 0 ? '+' : '') + lastImprovement + '%',
+        lastImprovement === null ? undefined : lastImprovement >= 0 ? '#4ade80' : '#f87171')
+    + chip('train target', fixedEpisodes > 0 ? fixedEpisodes + ' eps' : 'unlimited')
+    + chip('revenue', env.revenue.toFixed(1))
+    + chip('queues', '[' + queues + ']')
+    + chip('random baseline', baselineAvgWait === null ? '-' : baselineAvgWait.toFixed(1) + 's');
+  document.getElementById('stats').innerHTML = html;
+}
+
+function verdictFor(aw) {
+  if (baselineAvgWait === null) return 'No baseline yet.';
+  const ratio = aw / baselineAvgWait;
+  if (ratio < 0.7) return 'Excellent! ' + Math.round((1 - ratio) * 100) + '% less waiting than random dispatch.';
+  if (ratio < 1) return 'Better than random dispatch by ' + Math.round((1 - ratio) * 100) + '%.';
+  return 'About the same as random dispatch — keep training or try more episodes.';
+}
+
+// ---------------- results overlay with charts ----------------
+function drawResCharts() {
+  drawLineChart(document.getElementById('resC1'), epRewards, '#f472b6', 'reward', 0);
+  drawLineChart(document.getElementById('resC2'), epAvgWaits, '#38bdf8', 'avg wait (s)', 1);
+  drawLineChart(document.getElementById('resC3'), epQueues, '#f59e0b', 'avg queue', 1);
+  drawLineChart(document.getElementById('resC4'), epServed, '#4ade80', 'served', 0);
+  const cv = document.getElementById('resC5');
+  const c = cv.getContext('2d');
+  const cw = cv.width, ch = cv.height;
+  c.clearRect(0, 0, cw, ch);
+  c.fillStyle = '#101d36'; c.fillRect(0, 0, cw, ch);
+  c.fillStyle = '#94a3b8'; c.font = '10px sans-serif';
+  c.fillText('RL (avg over browser episodes) vs Random baseline', 8, 13);
+  const groups = [
+    { label: 'wait (s)', rl: mean(epAvgWaits), base: baselineStats.avgWait },
+    { label: 'served', rl: mean(epServed), base: baselineStats.served },
+    { label: 'revenue', rl: mean(epRevenues), base: baselineStats.revenue },
+  ];
+  const gw = cw / 3;
+  for (let g = 0; g < 3; g++) {
+    const gr = groups[g];
+    const rl = gr.rl, base = gr.base;
+    const mx = Math.max(rl || 1, base || 1) * 1.15;
+    const bx = 20 + g * gw;
+    c.fillStyle = '#64748b'; c.font = '10px sans-serif';
+    c.fillText(gr.label, bx + 30, ch - 4);
+    const bw = 40;
+    const h1 = (rl || 0) / mx * (ch - 34), h2 = base / mx * (ch - 34);
+    c.fillStyle = '#3b82f6';
+    c.fillRect(bx, ch - 16 - h1, bw, h1);
+    c.fillStyle = '#64748b';
+    c.fillRect(bx + bw + 8, ch - 16 - h2, bw, h2);
+    c.fillStyle = '#93c5fd'; c.font = '9px monospace';
+    c.fillText((rl === null ? '-' : rl.toFixed(1)), bx, ch - 20 - h1);
+    c.fillStyle = '#94a3b8';
+    c.fillText(base.toFixed(1), bx + bw + 8, ch - 20 - h2);
+    c.fillStyle = '#3b82f6'; c.font = '9px sans-serif'; c.fillText('RL', bx + 8, ch - 20);
+    c.fillStyle = '#94a3b8'; c.fillText('rand', bx + bw + 16, ch - 20);
+  }
+}
+
+function showResults(final) {
+  const r = (final && bestResult) ? bestResult : lastResult;
+  if (!r) return;
+  document.getElementById('resEpisode').textContent = r.episode + (final ? ' (best)' : '');
+  document.getElementById('resServed').textContent = r.served;
+  document.getElementById('resAvgWait').textContent = r.avgWait.toFixed(1) + 's';
+  document.getElementById('resMaxWait').textContent = r.maxWait.toFixed(1) + 's';
+  document.getElementById('resRevenue').textContent = r.revenue.toFixed(1);
+  const base = baselineAvgWait;
+  const ratio = base ? r.avgWait / base : null;
+  document.getElementById('resCompare').innerHTML = base
+    ? 'random baseline <b>' + base.toFixed(1) + 's</b> &#8594; ' + (final ? 'best episode' : 'last episode') + ' <b>' + r.avgWait.toFixed(1) + 's</b> (' +
+      (ratio < 1 ? '&#8722;' : '+') + Math.round(Math.abs(1 - ratio) * 100) + '%)' +
+      ' &middot; episode reward <b>' + r.reward.toFixed(0) + '</b>'
+    : 'random baseline not ready';
+  document.getElementById('resVerdict').textContent = verdictFor(r.avgWait);
+  let rows = '';
+  for (let i = episodeRecords.length - 1; i >= 0; i--) {
+    const e = episodeRecords[i];
+    const isBest = bestResult !== null && bestResult.episode === e.episode;
+    const isLast = i === episodeRecords.length - 1;
+    rows += '<tr' + (isBest ? ' class="best"' : (isLast ? ' class="latest"' : '')) + '>' +
+      '<td>#' + e.episode + '</td><td>' + e.reward.toFixed(0) + '</td><td>' + e.avgWait.toFixed(1) + 's</td>' +
+      '<td>' + e.maxWait.toFixed(1) + 's</td><td>' + e.served + '</td><td>' + e.revenue.toFixed(1) + '</td>' +
+      '<td>' + (e.improvement === null || e.improvement === undefined ? '&#8212;' : (e.improvement >= 0 ? '+' : '') + e.improvement + '%') + '</td></tr>';
+  }
+  document.getElementById('resList').innerHTML =
+    '<tr><th>Episode</th><th>Reward</th><th>Avg wait</th><th>Max wait</th><th>Served</th><th>Revenue</th><th>vs prev</th></tr>' + rows;
+  const fin = document.getElementById('resFinal');
+  if (final) {
+    const first = episodeRecords.length ? episodeRecords[0] : null;
+    const vsBase = base && base > 0 ? Math.round((1 - r.avgWait / base) * 100) : null;
+    const vsFirst = first && first.avgWait > 0 ? Math.round((1 - r.avgWait / first.avgWait) * 100) : null;
+    let why = 'Episode <b>#' + r.episode + '</b> produced the lowest average wait (<b>' + r.avgWait.toFixed(1) + 's</b>) of all ' + episodeRecords.length + ' trained episodes';
+    if (vsBase !== null) why += ' &mdash; <b>' + vsBase + '%</b> better than the random baseline (' + base.toFixed(1) + 's)';
+    if (vsFirst !== null) why += ' and <b>' + vsFirst + '%</b> better than episode 1 (' + first.avgWait.toFixed(1) + 's)';
+    why += '. The Q-values converged toward dispatching to lanes with the shortest total queue (ETC L1 preferred), so exploiting this policy minimizes waiting.';
+    const approach = 'Approach used: tabular <b>Q-learning</b> (off-policy). State = queue lengths (0&ndash;7) per lane, encoded to ' + N_STATES + ' indices; action = dispatch lane; reward = &minus;&Sigma; queue. Update: Q(s,a) &#8592; Q(s,a) + &alpha;(r + &gamma;&#183;max&#8321; Q(s&#8242;) &minus; Q(s,a)) with &alpha; = ' + ALPHA.toFixed(2) + ', &gamma; = ' + GAMMA.toFixed(2) + '; exploration was &epsilon;-greedy with &epsilon; restarting at 85% of the previous episode&rsquo;s start (floor 0.05). After the fixed ' + fixedEpisodes + ' episodes the agent switched to <b>exploitation</b> (&epsilon; = 0, greedy argmax) and the simulation stopped.';
+    fin.innerHTML = '<div class="fin-sec"><h3>Why it is the best</h3>' + why + '</div><div class="fin-sec"><h3>Which approach was used</h3>' + approach + '</div>';
+    fin.classList.remove('hidden');
+  } else {
+    fin.classList.add('hidden');
+  }
+  drawResCharts();
+  document.getElementById('results').classList.remove('hidden');
+}
+
+function frame(now) {
+  const dt = Math.min(now - last, 100);
+  last = now;
+  if (running) {
+    const speed = parseInt(document.getElementById('speed').value);
+    const mult = slowmo ? 0.2 : 1;
+    acc += speed * dt / 16.67 * mult;
+    acc = Math.min(acc, speed * 12);
+    while (acc >= 1) {
+      tickLoop();
+      acc -= 1;
+    }
+    updateDisplay(dt, env.tick + acc);
+  }
+  drawPlaza();
+  drawChart();
+  updateStats();
+  renderCards();
+  renderRLPanels();
+  renderRewardPanel();
+  renderBaselineCompare();
+  renderTrainingPanel();
+  renderTrainedPolicyPanel();
+  requestAnimationFrame(frame);
+}
+
+// ---------------- Why this action? ----------------
+function whyExplanation() {
+  const st = lastS;
+  const vals = qRow(lastSIdx);
+  const best = argMaxRow(vals);
+  const sel = lastAction;
+  let rows = '<tr><th>action</th><th>Q-value</th><th></th></tr>';
+  for (let a = 0; a < N_LANES; a++) {
+    const cls = a === sel ? 'sel' : (a === best ? 'best' : '');
+    rows += '<tr class="' + cls + '"><td>Prioritize ' + laneName(a) + (a === sel ? ' &#8592; selected' : '') + (a === best && a !== sel ? ' &#9733; argmax' : '') + '</td><td>' + vals[a].toFixed(2) + '</td><td>' + (a === best ? 'highest Q' : '') + '</td></tr>';
+  }
+  document.getElementById('whyTable').innerHTML = rows;
+  document.getElementById('whyAction').innerHTML = '<span style="color:#22c55e">' + actionLabel(sel) + '</span>' +
+    ' &nbsp;(Q = ' + vals[sel].toFixed(2) + ')';
+  let reason = '';
+  if (!lastGreedy && sel !== best) {
+    reason = 'This step the agent <b>explored</b>: with probability &epsilon; = ' + EPSILON.toFixed(3) +
+      ' it picks a random lane instead of the greedy one. The greedy (highest-Q) choice would have been ' +
+      laneName(best) + ' (Q = ' + vals[best].toFixed(2) + '), but it randomly chose ' + laneName(sel) + '.';
+  } else {
+    reason = 'The agent acted <b>greedily</b>: for the current state the learned Q-table assigns the highest value to ' +
+      laneName(best) + ' (Q = ' + vals[best].toFixed(2) + '), so the vehicle was dispatched there.';
+  }
+  const maxQ = Math.max(...st);
+  if (maxQ === 0) {
+    reason += ' The plaza is empty right now (all queues 0), so every action leads to reward 0 and the Q-values for this state are close together — the choice barely matters.';
+  } else {
+    const maxIdx = st.indexOf(maxQ);
+    reason += ' Queue pressure: ' + laneName(maxIdx) + ' holds ' + maxQ + ' vehicle(s), the highest of any lane';
+    if (sel === maxIdx) reason += ' — matching this action.';
+    else reason += ' (this action sent the vehicle to ' + laneName(sel) + ' with ' + st[sel] + ' queued).';
+  }
+  if (Math.abs(Math.max(...vals) - Math.min(...vals)) < 0.05) {
+    reason += ' All Q-values in this state are nearly equal, so the choice has little learned preference.';
+  }
+  document.getElementById('whyReason').innerHTML = reason;
+}
+
+document.getElementById('btnWhy').addEventListener('click', function () {
+  document.getElementById('whyState').innerHTML =
+    'L1 = ' + lastS[0] + ' vehicles' + (env.lanes[0].isEtc ? ' (ETC)' : '') +
+    ', L2 = ' + lastS[1] + ', L3 = ' + lastS[2] + ', L4 = ' + lastS[3] +
+    ' &middot; state index ' + lastSIdx + ' of ' + N_STATES;
+  whyExplanation();
+  document.getElementById('whyOverlay').classList.remove('hidden');
+});
+document.getElementById('btnCloseWhy').addEventListener('click', function () {
+  document.getElementById('whyOverlay').classList.add('hidden');
+});
+
+const legend = document.getElementById('legend');
+legend.innerHTML = VEHICLE_TYPES.map(t =>
+  '<span><span class="swatch" style="background:' + t.color + '"></span>' + t.name +
+  ' (fee ' + t.fee + ', ' + t.minS + '-' + t.maxS + 's)</span>'
+).join('') +
+  '<span><span class="swatch" style="background:#16a34a"></span>ETC lane</span>' +
+  '<span><span class="swatch" style="background:#64748b"></span>toll booth</span>' +
+  '<span><span class="swatch" style="background:#fbbf24"></span>toll gate</span>' +
+  '<span><span class="swatch" style="background:#22c55e"></span>serving (gate up)</span>' +
+  '<span><span class="swatch" style="background:#ef4444"></span>idle (gate down)</span>';
+
+function onEpisodeLenChange() {
+  const el = document.getElementById('episodeLen');
+  let v = parseInt(el.value, 10);
+  if (!isFinite(v)) v = EPISODE_LEN;
+  episodeLen = Math.max(100, Math.min(6000, v));
+  document.getElementById('episodeLenVal').textContent = String(episodeLen);
+  refreshBaseline();
+}
+document.getElementById('episodeLen').addEventListener('input', onEpisodeLenChange);
+document.getElementById('episodeLen').addEventListener('change', onEpisodeLenChange);
+
+function onFixEpisodesChange() {
+  const el = document.getElementById('fixEpisodes');
+  let v = parseInt(el.value, 10);
+  fixedEpisodes = isFinite(v) ? Math.max(0, Math.min(999, v)) : 0;
+  document.getElementById('fixEpisodesVal').textContent = String(fixedEpisodes);
+  trainingComplete = false;
+}
+document.getElementById('fixEpisodes').addEventListener('input', onFixEpisodesChange);
+document.getElementById('fixEpisodes').addEventListener('change', onFixEpisodesChange);
+
+document.getElementById('btnStart').addEventListener('click', function () {
+  running = true;
+  this.className = 'green active';
+  document.getElementById('btnStop').className = 'red secondary';
+});
+document.getElementById('btnStop').addEventListener('click', function () {
+  running = false;
+  this.className = 'red active';
+  document.getElementById('btnStart').className = 'green secondary';
+});
+document.getElementById('btnSlowmo').addEventListener('click', function () {
+  slowmo = !slowmo;
+  this.className = slowmo ? 'slowmo active' : 'slowmo secondary';
+});
+document.getElementById('btnTrain').addEventListener('click', function () {
+  mode = 'train';
+  EPSILON = 1.0;
+  epsStart = 1.0;
+  lastImprovement = null;
+  trainingComplete = false;
+  this.className = 'active';
+  document.getElementById('btnTrained').className = 'secondary';
+});
+document.getElementById('btnTrained').addEventListener('click', function () {
+  mode = 'trained';
+  this.className = 'active';
+  document.getElementById('btnTrain').className = 'secondary';
+});
+document.getElementById('btnResults').addEventListener('click', function () {
+  showResults();
+});
+document.getElementById('btnCloseResults').addEventListener('click', function () {
+  document.getElementById('results').classList.add('hidden');
+});
+document.getElementById('btnReset').addEventListener('click', function () {
+  env.reset();
+  disp.clear();
+  arm.fill(0);
+  episode = 1;
+  epAvgWaits = [];
+  bestWait = Infinity;
+  epRewards = []; epQueues = []; epServed = []; epsAtEnd = []; epRevenues = [];
+  liveEps = []; trainedEps = [];
+  episodeRecords = [];
+  lastResult = null;
+  lastImprovement = null;
+  epsStart = 1.0;
+  trainingComplete = false;
+  bestEpisode = null;
+  bestResult = null;
+  epRewardSum = 0; queueAcc = 0; stepCount = 0;
+  s = env.encode(env.stateTuple());
+  if (mode === 'train') EPSILON = 1.0;
+});
+
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

@@ -1,7 +1,7 @@
-__pycache__/
+﻿__pycache__/
 *.pyc
-.env
 venv/
-env/
+.venv/
+.vercel/
+node_modules/
 .DS_Store
-results/
